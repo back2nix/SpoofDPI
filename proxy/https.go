@@ -2,27 +2,34 @@ package proxy
 
 import (
 	"net"
-	"strconv"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/proxy"
+
 	"github.com/xvzc/SpoofDPI/packet"
 )
 
 func (pxy *Proxy) handleHttps(lConn *net.TCPConn, exploit bool, initPkt *packet.HttpPacket, ip string) {
 	// Create a connection to the requested server
-	var port int = 443
 	var err error
-	if initPkt.Port() != "" {
-		port, err = strconv.Atoi(initPkt.Port())
-		if err != nil {
-			log.Debug("[HTTPS] Error while parsing port for ", initPkt.Domain(), " aborting..")
-		}
+
+	dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:1081", nil, proxy.Direct)
+	if err != nil {
+		log.Debug("[HTTPS] Error creating SOCKS5 dialer: ", err)
+		return
 	}
 
-	rConn, err := net.DialTCP("tcp", nil, &net.TCPAddr{IP: net.ParseIP(ip), Port: port})
+	// Используем диалер для установления соединения
+	tcpConn, err := dialer.Dial("tcp", ip+":"+initPkt.Port())
 	if err != nil {
 		lConn.Close()
 		log.Debug("[HTTPS] ", err)
+		return
+	}
+
+	rConn, ok := tcpConn.(*net.TCPConn)
+	if !ok {
+		log.Debug("Connection is not TCP")
 		return
 	}
 
